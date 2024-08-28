@@ -1,9 +1,9 @@
-package handlers
+package telegram
 
 import tele "gopkg.in/telebot.v3"
 
 // TasksButtonHandler вызывается при нажатии на кнопку TasksButton
-var TasksButtonHandler = func(c tele.Context) error {
+func (b *Bot) TasksButtonHandler(c tele.Context) error {
 	keyboard := tele.ReplyMarkup{
 		InlineKeyboard: [][]tele.InlineButton{
 			{CreateTaskButton},

@@ -1,4 +1,4 @@
-package handlers
+package telegram
 
 import (
 	tele "gopkg.in/telebot.v3"
