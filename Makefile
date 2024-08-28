@@ -5,3 +5,6 @@ build:
 .PHONY run:
 run:
 	./cmd/bin/bot -c ./configs/test_cfg.yaml
+
+.PHONY all:
+all: build run
