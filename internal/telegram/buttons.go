@@ -4,6 +4,7 @@ import (
 	tele "gopkg.in/telebot.v3"
 )
 
+// Здесь объявлены все кнопки, используемые в интерфейсе бота
 var (
 	// HelpButton отображает вспомогательную информацию о пользовании ботом
 	HelpButton = tele.InlineButton{
