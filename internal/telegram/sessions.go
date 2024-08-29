@@ -1,6 +1,7 @@
 package telegram
 
 import (
+	"github.com/rogue0026/task-tracker/internal/models"
 	"gopkg.in/telebot.v3"
 	"sync"
 )
@@ -14,12 +15,14 @@ const (
 type Session struct {
 	CurrentBotState int64
 	LastMessage     *telebot.Message
+	UserTasksNames  []models.Task
 }
 
 func NewSession(botMsgID *telebot.Message) Session {
 	s := Session{
 		CurrentBotState: IdleInMainMenu,
 		LastMessage:     botMsgID,
+		UserTasksNames:  make([]models.Task, 0),
 	}
 	return s
 }

@@ -9,7 +9,7 @@ var (
 	// HelpButton отображает вспомогательную информацию о пользовании ботом
 	HelpButton = tele.InlineButton{
 		Unique: "HelpButton",
-		Text:   "Помощь",
+		Text:   "🆘Помощь🆘",
 		Data:   "Помощь",
 	}
 	BackButton = tele.InlineButton{
@@ -20,19 +20,19 @@ var (
 	// ContactsButton отображает контакты разработчика бота
 	ContactsButton = tele.InlineButton{
 		Unique: "ContactsButton",
-		Text:   "Контакты",
-		Data:   "Контакты",
+		Text:   "📩Поддержка📩",
+		Data:   "Поддержка",
 	}
 	// TasksButton отображает меню управления задачами пользователя
 	TasksButton = tele.InlineButton{
 		Unique: "TasksButton",
-		Text:   "Задачи",
+		Text:   "🗓Задачи🗓",
 		Data:   "Задачи",
 	}
 	// DonateButton отображает платежные реквизиты для пожертвований, на которые будет осуществляться дальнейшее развитие бота
 	DonateButton = tele.InlineButton{
 		Unique: "DonateButton",
-		Text:   "🪙Donate🪙",
+		Text:   "💰Donate💰",
 		Data:   "Donate",
 	}
 

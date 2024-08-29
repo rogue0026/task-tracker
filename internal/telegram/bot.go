@@ -1,10 +1,14 @@
 package telegram
 
 import (
+	"errors"
 	"github.com/rogue0026/task-tracker/internal/config"
+	"github.com/rogue0026/task-tracker/internal/models"
 	"github.com/sirupsen/logrus"
 	tele "gopkg.in/telebot.v3"
 	"os"
+	"strings"
+	"time"
 )
 
 type Bot struct {
@@ -82,6 +86,9 @@ func (b *Bot) registerHandlers() {
 	b.api.Handle(&ContactsButton, b.ContactsButtonHandler)
 	b.api.Handle(&TasksButton, b.TasksButtonHandler)
 	b.api.Handle(&DonateButton, b.DonateButtonHandler)
+	b.api.Handle(&CreateTaskButton, b.CreateTaskHandler)
+	b.api.Handle(tele.OnText, b.UserInputHandler)
+	b.api.Handle(&ShowAllTasksButton, b.ShowAllTasksButtonHandler)
 }
 
 func (b *Bot) StartCommandHandler(c tele.Context) error {
@@ -169,4 +176,101 @@ func (b *Bot) TasksButtonHandler(c tele.Context) error {
 
 func (b *Bot) DonateButtonHandler(c tele.Context) error {
 	return c.Send("Здесь будут реквизиты для пожертвований на развитие бота")
+}
+
+// CreateTaskHandler отправляет пользователю сообщение с просьбой отправить название задачи и переводи состояние сессии в режим ожидания сообщения от пользователя
+func (b *Bot) CreateTaskHandler(c tele.Context) error {
+	const fn = "CreateTaskHandler"
+	usrSession, ok := b.UserSessions.GetSession(c.Chat().ID)
+	if ok {
+		err := c.Send("Отправь мне название задачи, которое ты хочешь сохранить")
+		if err != nil {
+			b.Logger.Errorf("func=%s error=%s", fn, err.Error())
+			return err
+		}
+		// We change session state to wait for task name from user
+		usrSession.CurrentBotState = WaitingTaskNameInputFromUser
+		b.Logger.Debug("session state was changed to waiting for task name from user")
+	} else {
+		b.Logger.Errorf("func=%s error=%s", fn, "user session not found")
+	}
+	return nil
+}
+
+func (b *Bot) UserInputHandler(c tele.Context) error {
+	const fn = "UserInputHandler"
+	usrSession, ok := b.UserSessions.GetSession(c.Chat().ID)
+	if ok {
+		switch usrSession.CurrentBotState {
+		// This case must be executed if bot is in waiting for user task name
+		case WaitingTaskNameInputFromUser:
+			inMsg := c.Message()
+			b.Logger.Debugf("received message: %s", inMsg.Text)
+			// If ok - save message text to tasks storage
+			if inMsg != nil {
+				t := models.Task{
+					Name: inMsg.Text,
+				}
+				usrSession.UserTasksNames = append(usrSession.UserTasksNames, t)
+				c.Send("Отлично, теперь отправь мне время и дату в формате ЧЧ.ММ ДД.ММ.ГГГГ, до которого ты должен успеть выполнить поставленную задачу")
+				usrSession.CurrentBotState = WaitingTaskDateInputFromUser
+			} else {
+				b.Logger.Errorf("func=%s error=input message is nil", fn)
+				return errors.New("input message is nil")
+			}
+		case WaitingTaskDateInputFromUser:
+			// parsing input message to time.Time struct
+			deadline, err := time.Parse(models.TimeParseLayout, c.Message().Text)
+			if err != nil {
+				b.Logger.Errorf("func=%s error=%s", fn, err.Error())
+				return err
+			}
+			// adding deadline info to task
+			usrSession.UserTasksNames[len(usrSession.UserTasksNames)-1].Deadline = deadline
+			c.Send("Отлично, задача добавлена в список для отслеживания")
+			time.Sleep(time.Second * 1)
+
+			// Sending message to user for further task management
+			keyboard := tele.ReplyMarkup{
+				InlineKeyboard: [][]tele.InlineButton{
+					{CreateTaskButton},
+					{DeleteTaskButton},
+					{ShowAllTasksButton},
+					{BackButton},
+				},
+			}
+			// Sending message to user
+			sentMsg, err := b.api.Send(c.Chat(), "Режим управления задачами", &keyboard)
+			if err != nil {
+				b.Logger.Errorf("func=%s error=%s", fn, err.Error())
+				return err
+			}
+			err = b.api.Delete(usrSession.LastMessage)
+			if err != nil {
+				b.Logger.Errorf("func=%s error=%s", fn, err.Error())
+				return err
+			}
+			usrSession.LastMessage = sentMsg
+		}
+	} else {
+		b.Logger.Errorf("func=%s error=%s", fn, "user session not found")
+	}
+	return nil
+}
+
+func (b *Bot) ShowAllTasksButtonHandler(c tele.Context) error {
+	const fn = "ShowAllTasksButtonHandler"
+	usrSession, ok := b.UserSessions.GetSession(c.Chat().ID)
+	if ok {
+		bldr := strings.Builder{}
+		for _, t := range usrSession.UserTasksNames {
+			bldr.WriteString(t.String() + "\n")
+		}
+		err := c.Send(bldr.String())
+		if err != nil {
+			b.Logger.Errorf("func=%s error=%s", fn, err.Error())
+			return err
+		}
+	}
+	return nil
 }
