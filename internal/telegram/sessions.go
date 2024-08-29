@@ -10,19 +10,22 @@ const (
 	IdleInMainMenu int64 = 1<<60 + iota
 	WaitingTaskNameInputFromUser
 	WaitingTaskDateInputFromUser
+	WaitingTaskIDForDeleteTask
 )
 
 type Session struct {
 	CurrentBotState int64
 	LastMessage     *telebot.Message
-	UserTasksNames  []models.Task
+	FreeTaskID      int64
+	UserTasks       []models.Task
 }
 
 func NewSession(botMsgID *telebot.Message) Session {
 	s := Session{
 		CurrentBotState: IdleInMainMenu,
 		LastMessage:     botMsgID,
-		UserTasksNames:  make([]models.Task, 0),
+		FreeTaskID:      int64(1),
+		UserTasks:       make([]models.Task, 0),
 	}
 	return s
 }

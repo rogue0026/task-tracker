@@ -7,6 +7,8 @@ import (
 	"github.com/sirupsen/logrus"
 	tele "gopkg.in/telebot.v3"
 	"os"
+	"slices"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -25,7 +27,7 @@ func NewBot(cfg config.BotCfg, env string) (*Bot, error) {
 		botSettings = tele.Settings{
 			Token:   cfg.Token,
 			Poller:  &tele.LongPoller{},
-			Verbose: true,
+			Verbose: false,
 		}
 		botLogger = &logrus.Logger{
 			Level: logrus.DebugLevel,
@@ -89,6 +91,7 @@ func (b *Bot) registerHandlers() {
 	b.api.Handle(&CreateTaskButton, b.CreateTaskHandler)
 	b.api.Handle(tele.OnText, b.UserInputHandler)
 	b.api.Handle(&ShowAllTasksButton, b.ShowAllTasksButtonHandler)
+	b.api.Handle(&DeleteTaskButton, b.DeleteTaskButtonHandler)
 }
 
 func (b *Bot) StartCommandHandler(c tele.Context) error {
@@ -209,9 +212,11 @@ func (b *Bot) UserInputHandler(c tele.Context) error {
 			// If ok - save message text to tasks storage
 			if inMsg != nil {
 				t := models.Task{
+					ID:   usrSession.FreeTaskID,
 					Name: inMsg.Text,
 				}
-				usrSession.UserTasksNames = append(usrSession.UserTasksNames, t)
+				usrSession.FreeTaskID++
+				usrSession.UserTasks = append(usrSession.UserTasks, t)
 				c.Send("Отлично, теперь отправь мне время и дату в формате ЧЧ.ММ ДД.ММ.ГГГГ, до которого ты должен успеть выполнить поставленную задачу")
 				usrSession.CurrentBotState = WaitingTaskDateInputFromUser
 			} else {
@@ -226,7 +231,12 @@ func (b *Bot) UserInputHandler(c tele.Context) error {
 				return err
 			}
 			// adding deadline info to task
-			usrSession.UserTasksNames[len(usrSession.UserTasksNames)-1].Deadline = deadline
+			usrSession.UserTasks[len(usrSession.UserTasks)-1].Deadline = deadline
+			if deadline.After(time.Now()) {
+				usrSession.UserTasks[len(usrSession.UserTasks)-1].Status = models.NotCompleted
+			} else {
+				usrSession.UserTasks[len(usrSession.UserTasks)-1].Status = models.Failed
+			}
 			c.Send("Отлично, задача добавлена в список для отслеживания")
 			time.Sleep(time.Second * 1)
 
@@ -251,6 +261,54 @@ func (b *Bot) UserInputHandler(c tele.Context) error {
 				return err
 			}
 			usrSession.LastMessage = sentMsg
+
+			usrSession.CurrentBotState = IdleInMainMenu
+
+		case WaitingTaskIDForDeleteTask:
+			taskID, err := strconv.ParseInt(c.Message().Text, 10, 64)
+			if err != nil {
+				b.Logger.Errorf("func=%s error=%s", fn, err.Error())
+				err = c.Send("Вы неверно указали номер задачи. Отправьте номер задачи повторно.")
+				if err != nil {
+					b.Logger.Errorf("func=%s error=%s", fn, err.Error())
+					return err
+				}
+			} else {
+				for i := range usrSession.UserTasks {
+					if usrSession.UserTasks[i].ID == taskID {
+						result := slices.Concat(usrSession.UserTasks[:i], usrSession.UserTasks[i+1:])
+						usrSession.UserTasks = result
+					}
+				}
+
+				err = c.Send("Задача удалена")
+				if err != nil {
+					b.Logger.Errorf("func=%s error=%s", fn, err.Error())
+					return err
+				}
+				usrSession.CurrentBotState = IdleInMainMenu
+				// Sending message to user for further task management
+				keyboard := tele.ReplyMarkup{
+					InlineKeyboard: [][]tele.InlineButton{
+						{CreateTaskButton},
+						{DeleteTaskButton},
+						{ShowAllTasksButton},
+						{BackButton},
+					},
+				}
+				// Sending message to user
+				sentMsg, err := b.api.Send(c.Chat(), "Режим управления задачами", &keyboard)
+				if err != nil {
+					b.Logger.Errorf("func=%s error=%s", fn, err.Error())
+					return err
+				}
+				err = b.api.Delete(usrSession.LastMessage)
+				if err != nil {
+					b.Logger.Errorf("func=%s error=%s", fn, err.Error())
+					return err
+				}
+				usrSession.LastMessage = sentMsg
+			}
 		}
 	} else {
 		b.Logger.Errorf("func=%s error=%s", fn, "user session not found")
@@ -262,15 +320,47 @@ func (b *Bot) ShowAllTasksButtonHandler(c tele.Context) error {
 	const fn = "ShowAllTasksButtonHandler"
 	usrSession, ok := b.UserSessions.GetSession(c.Chat().ID)
 	if ok {
-		bldr := strings.Builder{}
-		for _, t := range usrSession.UserTasksNames {
-			bldr.WriteString(t.String() + "\n")
+		builder := strings.Builder{}
+		for _, t := range usrSession.UserTasks {
+			builder.WriteString(t.String() + "\n")
 		}
-		err := c.Send(bldr.String())
-		if err != nil {
-			b.Logger.Errorf("func=%s error=%s", fn, err.Error())
-			return err
+		if len(builder.String()) == 0 {
+			err := c.Send("Пока что нет задач")
+			if err != nil {
+				b.Logger.Errorf("func=%s error=%s", fn, err.Error())
+				return err
+			}
+		} else {
+			err := c.Send(builder.String())
+			if err != nil {
+				b.Logger.Errorf("func=%s error=%s", fn, err.Error())
+				return err
+			}
 		}
+	}
+	return nil
+}
+
+func (b *Bot) DeleteTaskButtonHandler(c tele.Context) error {
+	const fn = "DeleteTaskButtonHandler"
+	usrSession, ok := b.UserSessions.GetSession(c.Chat().ID)
+	if ok {
+		if len(usrSession.UserTasks) == 0 {
+			err := c.Send("Нет задач для удаления")
+			if err != nil {
+				b.Logger.Errorf("func=%s error=%s", fn, err.Error())
+				return err
+			}
+		} else {
+			err := c.Send("Отправь мне порядковый номер задачи, которую ты хочешь удалить")
+			if err != nil {
+				b.Logger.Errorf("func=%s error=%s", fn, err.Error())
+				return err
+			}
+			usrSession.CurrentBotState = WaitingTaskIDForDeleteTask
+		}
+	} else {
+		b.Logger.Errorf("func=%s error=%s", fn, "user session not found")
 	}
 	return nil
 }
