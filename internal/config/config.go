@@ -7,6 +7,7 @@ import (
 
 type BotCfg struct {
 	Token string `yaml:"token"`
+	DSN   string `yaml:"dsn"`
 }
 
 func Load(path string) (BotCfg, error) {

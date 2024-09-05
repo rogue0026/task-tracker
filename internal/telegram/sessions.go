@@ -6,26 +6,18 @@ import (
 	"sync"
 )
 
-const (
-	IdleInMainMenu int64 = 1<<60 + iota
-	WaitingTaskNameInputFromUser
-	WaitingTaskDateInputFromUser
-	WaitingTaskIDForDeleteTask
-)
-
 type Session struct {
-	CurrentBotState int64
+	UserID          int64
+	CurrentBotState string
 	LastMessage     *telebot.Message
-	FreeTaskID      int64
-	UserTasks       []models.Task
+	TempTask        models.Task
 }
 
-func NewSession(botMsgID *telebot.Message) Session {
+func NewSession(usrID int64, botMsgID *telebot.Message) Session {
 	s := Session{
+		UserID:          usrID,
 		CurrentBotState: IdleInMainMenu,
 		LastMessage:     botMsgID,
-		FreeTaskID:      int64(1),
-		UserTasks:       make([]models.Task, 0),
 	}
 	return s
 }
@@ -53,7 +45,7 @@ func (ss *SessionsStorage) AddSession(chatID int64, s Session) {
 	}
 }
 
-func (ss *SessionsStorage) GetSession(chatID int64) (*Session, bool) {
+func (ss *SessionsStorage) SessionByID(chatID int64) (*Session, bool) {
 	ss.mu.Lock()
 	defer ss.mu.Unlock()
 	session, ok := ss.sessions[chatID]
