@@ -14,7 +14,6 @@ const DateLayout string = "02.01.2006"
 
 func (b *Bot) StartCommandHandler(c tele.Context) error {
 	const fn = "StartCommandHandler"
-
 	mainMenuKeyboard := tele.ReplyMarkup{
 		InlineKeyboard: [][]tele.InlineButton{
 			{TasksButton},
@@ -48,7 +47,8 @@ func (b *Bot) StartCommandHandler(c tele.Context) error {
 		}
 
 		builder := strings.Builder{}
-		builder.WriteString("||                            Workaholic                            ||\n")
+
+		builder.WriteString("===============Workaholic==============\n")
 		builder.WriteString("Дата и время: ")
 		builder.WriteString(time.Now().Format("02.01.2006 15:04") + "\n")
 
@@ -64,9 +64,16 @@ func (b *Bot) StartCommandHandler(c tele.Context) error {
 			builder.WriteString("Задач на сегодня: задачи отсутствуют")
 		} else {
 			builder.WriteString(fmt.Sprintf("Задач на сегодня: %d\n", len(todayTasks)))
+			builder.WriteString("======================================\n")
 			for i := range todayTasks {
-				builder.WriteString(fmt.Sprintf("%s\n", todayTasks[i].String()))
+				name := todayTasks[i].Name
+				remaining := todayTasks[i].Deadline.Sub(time.Now())
+				h := int(remaining.Hours())
+				m := int(remaining.Minutes()) % 60
+				s := int(remaining.Seconds()) % 60
+				builder.WriteString(fmt.Sprintf("%s %2d:%d:%d\n", name, h, m, s))
 			}
+			builder.WriteString("======================================\n")
 		}
 
 		sentMsg, err := b.api.Send(c.Chat(), builder.String(), &mainMenuKeyboard)
@@ -293,51 +300,24 @@ func (b *Bot) UserInputHandler(c tele.Context) error {
 			usrSession.CurrentBotState = IdleInMainMenu
 		}
 
-	case WaitingTaskIDForDeleteTask:
-		//taskID, err := strconv.ParseInt(c.Message().Text, 10, 64)
-		//if err != nil {
-		//	b.Logger.Errorf("func=%s error=%s", fn, err.Error())
-		//	err = c.Send("Ошибка распознавания номера задачи. Отправьте номер задачи повторно.")
-		//	if err != nil {
-		//		b.Logger.Errorf("func=%s error=%s", fn, err.Error())
-		//		return err
-		//	}
-		//} else {
-		//	for i := range usrSession.UserTasks {
-		//		if usrSession.UserTasks[i].ID == taskID {
-		//			result := slices.Concat(usrSession.UserTasks[:i], usrSession.UserTasks[i+1:])
-		//			usrSession.UserTasks = result
-		//		}
-		//	}
-		//
-		//	err = c.Send("Задача удалена")
-		//	if err != nil {
-		//		b.Logger.Errorf("func=%s error=%s", fn, err.Error())
-		//		return err
-		//	}
-		//	usrSession.CurrentBotState = IdleInMainMenu
-		//	// Sending message to user for further task management
-		//	keyboard := tele.ReplyMarkup{
-		//		InlineKeyboard: [][]tele.InlineButton{
-		//			{CreateTaskButton},
-		//			{DeleteTaskButton},
-		//			{ShowAllTasksButton},
-		//			{BackButton},
-		//		},
-		//	}
-		//	// Sending message to user
-		//	sentMsg, err := b.api.Send(c.Chat(), "Управление задачами", &keyboard)
-		//	if err != nil {
-		//		b.Logger.Errorf("func=%s error=%s", fn, err.Error())
-		//		return err
-		//	}
-		//	err = b.api.Delete(usrSession.LastMessage)
-		//	if err != nil {
-		//		b.Logger.Errorf("func=%s error=%s", fn, err.Error())
-		//		return err
-		//	}
-		//	usrSession.LastMessage = sentMsg
-		//}
+	case WaitingTaskNameForDelete:
+		taskName := c.Message().Text
+		err := b.Tasks.DeleteTask(taskName, usrSession.UserID)
+		if err != nil {
+			b.Logger.Errorf("func=%s error=%s", fn, err.Error())
+			return err
+		}
+		err = c.Send("Задача удалена")
+		if err != nil {
+			b.Logger.Errorf("func=%s error=%s", fn, err.Error())
+			return err
+		}
+		err = b.StartCommandHandler(c)
+		if err != nil {
+			b.Logger.Errorf("func=%s error=%s", fn, err.Error())
+			return err
+		}
+		usrSession.CurrentBotState = IdleInMainMenu
 	}
 	return nil
 }
@@ -382,29 +362,37 @@ func (b *Bot) ShowAllTasksButtonHandler(c tele.Context) error {
 	return nil
 }
 
-//func (b *Bot) DeleteTaskButtonHandler(c tele.Context) error {
-//	const fn = "DeleteTaskButtonHandler"
-//	usrSession, ok := b.UserSessions.SessionByID(c.Chat().ID)
-//	if ok {
-//		if len(usrSession.UserTasks) == 0 {
-//			err := c.Send("Нет задач для удаления")
-//			if err != nil {
-//				b.Logger.Errorf("func=%s error=%s", fn, err.Error())
-//				return err
-//			}
-//		} else {
-//			err := c.Send("Отправь мне номер задачи, которую ты хочешь удалить")
-//			if err != nil {
-//				b.Logger.Errorf("func=%s error=%s", fn, err.Error())
-//				return err
-//			}
-//			usrSession.CurrentBotState = WaitingTaskIDForDeleteTask
-//		}
-//	} else {
-//		b.Logger.Errorf("func=%s error=%s", fn, "user session not found")
-//	}
-//	return nil
-//}
+func (b *Bot) DeleteTaskButtonHandler(c tele.Context) error {
+	const fn = "DeleteTaskButtonHandler"
+	usrSession, ok := b.UserSessions.SessionByID(c.Chat().ID)
+	if ok {
+		tasks, err := b.Tasks.UserTasks(usrSession.UserID)
+		if err != nil {
+			if errors.Is(err, storage.ErrNoTasksForUser) {
+				err := c.Send("Нет задач для удаления")
+				if err != nil {
+					b.Logger.Errorf("func=%s error=%s", fn, err.Error())
+					return err
+				}
+				return nil
+			}
+			b.Logger.Errorf("func=%s error=%s", fn, err.Error())
+			return err
+		}
+		builder := strings.Builder{}
+		builder.WriteString("Выбери задачу из списка и отправь мне ее название\n")
+		for _, t := range tasks {
+			builder.WriteString(fmt.Sprintf("`%s`\n\n", t.Name))
+		}
+		err = c.Send(builder.String(), tele.ModeMarkdownV2)
+		if err != nil {
+			b.Logger.Errorf("func=%s error=%s", fn, err.Error())
+			return err
+		}
+		usrSession.CurrentBotState = WaitingTaskNameForDelete
+	}
+	return nil
+}
 
 func (b *Bot) StartTrackingButtonHandler(c tele.Context) error {
 	const fn = "StartTrackingButtonHandler"

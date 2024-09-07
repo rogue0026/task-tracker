@@ -42,9 +42,20 @@ func (s *TasksStorage) SaveTask(t models.Task) error {
 	return nil
 }
 
+func (s *TasksStorage) DeleteTask(taskName string, userID int64) error {
+	const fn = "internal.storage.postgres.DeleteTask"
+	q := "DELETE FROM t_tasks WHERE name = $1 and user_id = $2"
+	_, err := s.conn.Exec(context.Background(), q, taskName, userID)
+	if err != nil {
+		return fmt.Errorf("func=%s error=%w", fn, err)
+	}
+
+	return nil
+}
+
 func (s *TasksStorage) UserTasks(userID int64) ([]models.Task, error) {
 	const fn = "internal.storage.postgres.UserTasks"
-	q := "SELECT name, deadline FROM t_tasks WHERE user_id = $1"
+	q := "SELECT name, deadline FROM t_tasks WHERE user_id = $1 ORDER BY deadline"
 	rows, err := s.conn.Query(context.Background(), q, userID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -66,5 +77,10 @@ func (s *TasksStorage) UserTasks(userID int64) ([]models.Task, error) {
 	if err = rows.Err(); err != nil {
 		return nil, fmt.Errorf("func=%s error=%w", fn, err)
 	}
+
+	if len(userTasks) == 0 {
+		return nil, storage.ErrNoTasksForUser
+	}
+
 	return userTasks, nil
 }

@@ -16,7 +16,7 @@ const (
 	IdleInMainMenu                string = "IdleInMainMenu"
 	WaitingTaskNameInputFromUser  string = "WaitingTaskNameInputFromUser"
 	WaitingTaskDateInputFromUser  string = "WaitingTaskDateInputFromUser"
-	WaitingTaskIDForDeleteTask    string = "WaitingTaskIDForDeleteTask"
+	WaitingTaskNameForDelete      string = "WaitingTaskIDForDeleteTask"
 	WaitingTaskIDForSetupTracking string = "WaitingTaskIDForSetupTracking"
 
 	TimeParseLayout string = "15.04 02.01.2006"
@@ -116,5 +116,5 @@ func (b *Bot) registerHandlers() {
 	b.api.Handle(&CreateTaskButton, b.CreateTaskHandler, b.CheckRegistration)
 	b.api.Handle(tele.OnText, b.UserInputHandler, b.CheckRegistration)
 	b.api.Handle(&ShowAllTasksButton, b.ShowAllTasksButtonHandler, b.CheckRegistration)
-	//b.api.Handle(&DeleteTaskButton, b.DeleteTaskButtonHandler, b.CheckRegistration)
+	b.api.Handle(&DeleteTaskButton, b.DeleteTaskButtonHandler, b.CheckRegistration)
 }

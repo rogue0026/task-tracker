@@ -46,9 +46,10 @@ var (
 
 	// DeleteTaskButton запускает процесс удаления существующей задачи
 	DeleteTaskButton = tele.InlineButton{
-		Unique: "DeleteTaskButton",
-		Text:   "Удалить задачу",
-		Data:   "Удалить задачу",
+		Unique:                "DeleteTaskButton",
+		Text:                  "Удалить задачу",
+		Data:                  "Удалить задачу",
+		InlineQueryChosenChat: &tele.SwitchInlineQuery{},
 	}
 
 	// ShowAllTasksButton отображает все созданные для текущего пользователя задачи
